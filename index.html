@@ -1,7 +1,9 @@
-<!DOCTYPE html><html><head>
+<!DOCTYPE html>
+<html>
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>W8Team</title>
+<title>FuhXFF</title> <!-- এখানে 'W8Team' পরিবর্তন করে 'FuhXFF' লেখা হয়েছে -->
 <style>
     html,body{margin:0;height:100%;background:#111;overflow:hidden;}
     canvas{width:100vw;height:100vh;display:block;}
@@ -35,6 +37,123 @@ function compile(src,type){
 }
 
 const vs = compile(`attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}`, gl.VERTEX_SHADER);
+
+const fs = compile(`
+precision highp float;
+
+uniform vec2 R;
+uniform float T;
+uniform float density;
+uniform float scatter;
+uniform float speed;
+uniform float lightI;
+
+float noise(vec3 p){
+  float n=0.,a=0.6;
+  for(int i=0;i<4;i++){
+    n+= (sin(p.x)+sin(p.y)+sin(p.z))*0.33*a;
+    p*=1.8; a*=0.55;
+  }
+  return n*0.5+0.5;
+}
+
+float field(vec3 p){
+  float base=noise(p*1.2+vec3(0.,T*speed*0.2,0.));
+  float c=noise(p*3.0+vec3(7.,2.,9.)+T*speed*0.5);
+  float h=smoothstep(0.6,-0.6,p.y);
+  return clamp((base*0.9+c*0.4)*h*density,0.,1.);
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy / R) * 2. - 1.;
+  uv.x *= R.x/R.y;
+
+  vec3 ro = vec3(3.,1.2,3.);
+  vec3 ta = vec3(0.,0.4,0.);
+  vec3 f = normalize(ta-ro);
+  vec3 r = normalize(cross(vec3(0,1,0),f));
+  vec3 u = cross(f,r);
+  vec3 rd = normalize(r*uv.x + u*uv.y + f*1.6);
+
+  vec3 L = normalize(vec3(-0.5,0.6,-0.8));
+  vec3 tint = vec3(0.85,0.9,1.0);
+  vec3 sky = vec3(0.06,0.12,0.25);
+
+  float t=0.,dt=0.25,md=20.,A=0.;
+  vec3 C=vec3(0.);
+
+  for(int i=0;i<80;i++){
+    vec3 p = ro + rd * t;
+    float d = field(p);
+    float ext = d*1.4;
+
+    float lt = 1.0;
+    vec3 lp = p;
+    for(int j=0;j<6;j++){
+      lp += L*0.8;
+      lt *= exp(-field(lp)*0.5);
+    }
+
+    float ph = scatter;
+    vec3 s = tint * d * lt * lightI * ph;
+
+    float a = 1. - exp(-ext*dt);
+    a *= (1. - A);
+
+    C += s * a;
+    A += a;
+
+    t += dt;
+    if(t > md || A > 0.99) break;
+  }
+
+  vec3 col = mix(sky, C + sky*0.25, A);
+  col = pow(col, vec3(0.75));
+  gl_FragColor = vec4(col,1);
+}
+`, gl.FRAGMENT_SHADER);
+
+const prog = gl.createProgram();
+gl.attachShader(prog,vs);
+gl.attachShader(prog,fs);
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+
+const loc = {
+  p: gl.getAttribLocation(prog,"p"),
+  R: gl.getUniformLocation(prog,"R"),
+  T: gl.getUniformLocation(prog,"T"),
+  density: gl.getUniformLocation(prog,"density"),
+  scatter: gl.getUniformLocation(prog,"scatter"),
+  speed: gl.getUniformLocation(prog,"speed"),
+  lightI: gl.getUniformLocation(prog,"lightI")
+};
+
+gl.enableVertexAttribArray(loc.p);
+gl.vertexAttribPointer(loc.p,2,gl.FLOAT,false,0,0);
+
+// MAXIMUM VALUES
+gl.uniform1f(loc.density, 5.0);
+gl.uniform1f(loc.scatter, 2.0);
+gl.uniform1f(loc.speed, 2.0);
+gl.uniform1f(loc.lightI, 5.0);
+
+let t0 = performance.now();
+function draw(){
+  requestAnimationFrame(draw);
+  gl.uniform2f(loc.R, canvas.width, canvas.height);
+  gl.uniform1f(loc.T, (performance.now()-t0)/1000);
+  gl.drawArrays(gl.TRIANGLES,0,6);
+}
+draw();
+</script>
+
+</body>
+</html>const vs = compile(`attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}`, gl.VERTEX_SHADER);
 
 const fs = compile(`
 precision highp float;
